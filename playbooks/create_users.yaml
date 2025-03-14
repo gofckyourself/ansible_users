@@ -1,0 +1,55 @@
+- name: Deploy users and SSH configurations on remote hosts
+  hosts: all
+  become: yes
+  vars:
+    users:
+      - ivanov
+      - petrov
+      - sidorov
+
+
+  tasks:
+    - name: Create users
+      ansible.builtin.user:
+        name: "{{ item }}"
+        shell: /bin/bash
+        password: '*'
+        create_home: yes
+      loop: "{{ users }}"
+
+    - name: Add users to sudoers with no password requirement
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ item }}"
+        content: "{{ item }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: '0440'
+      loop: "{{ users }}"
+
+    - name: Create .ssh directory for users
+      ansible.builtin.file:
+        path: "/home/{{ item }}/.ssh"
+        state: directory
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: '0700'
+      loop: "{{ users }}"
+
+    - name: Add public SSH key to users authorized_keys
+      ansible.builtin.copy:
+        src: "/opt/keys/{{ item }}.pub"
+        dest: "/home/{{ item }}/.ssh/authorized_keys"
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: '0600'
+      loop: "{{ users }}"
+    - name: Ensure PasswordAuthentication is disabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+        backup: yes
+
+    - name: Restart SSH service
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
